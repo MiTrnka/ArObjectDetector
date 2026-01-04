@@ -32,14 +32,17 @@ public partial class MainPage : ContentPage
         Debug.WriteLine("=== OnStartCameraClicked: Button clicked ===");
         try
         {
+            // Zkontrolovat aktuální stav oprávnění ke kameře
             var currentStatus = await Permissions.CheckStatusAsync<Permissions.Camera>();
             Debug.WriteLine($"Camera permission status: {currentStatus}");
             
+            // Pokud oprávnění není uděleno, požádat o něj
             if (currentStatus != PermissionStatus.Granted)
             {
                 var status = await Permissions.RequestAsync<Permissions.Camera>();
                 Debug.WriteLine($"Camera permission requested, result: {status}");
                 
+                // Pokud uživatel oprávnění neudělil, zobrazit chybovou zprávu a ukončit
                 if (status != PermissionStatus.Granted)
                 {
                     StatusLabel.Text = "Kamera nemá oprávnění!";
@@ -48,15 +51,19 @@ public partial class MainPage : ContentPage
                 }
             }
 
+            // Aktualizovat UI s informací o spouštění kamery
             StatusLabel.Text = "Kamera startuje...";
             Debug.WriteLine("Starting camera preview...");
             
+            // Spustit náhled kamery přes CameraView control
             await CameraViewControl.StartCameraPreview(CancellationToken.None);
             
+            // Nastavit flag detekce na true pro spuštění smyčky
             _isDetecting = true;
             StatusLabel.Text = "Kamera běží";
             Debug.WriteLine("=== Camera started, launching DetectionLoop ===");
             
+            // Spustit detekční smyčku na pozadí (fire-and-forget)
             _ = Task.Run(DetectionLoop);
         }
         catch (Exception ex)
@@ -76,13 +83,16 @@ public partial class MainPage : ContentPage
         Debug.WriteLine("=== DetectionLoop STARTED ===");
         int loopCount = 0;
         
+        // Běžet dokud je _isDetecting true
         while (_isDetecting)
         {
             loopCount++;
             Debug.WriteLine($"--- DetectionLoop iteration #{loopCount} ---");
             
+            // Čekat 800ms mezi detekcemi (optimální pro výkon vs real-time)
             await Task.Delay(800);
             
+            // Double-check, zda stále detekujeme
             if (!_isDetecting)
             {
                 Debug.WriteLine("DetectionLoop: _isDetecting = false, breaking");
@@ -92,18 +102,25 @@ public partial class MainPage : ContentPage
             byte[]? imageBytes = null;
 
             Debug.WriteLine("DetectionLoop: Capturing image...");
+            
+            // Zachytit frame z kamery - musí běžet na UI vlákně
             await MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 try
                 {
                     Debug.WriteLine("DetectionLoop: Calling CaptureImage");
+                    
+                    // Získat stream s obrázkem z CameraView
                     using var stream = await CameraViewControl.CaptureImage(CancellationToken.None);
                     if (stream != null)
                     {
                         Debug.WriteLine($"DetectionLoop: Stream received, length: {stream.Length}");
+                        
+                        // Zkopírovat stream do byte pole pro další zpracování
                         using var ms = new MemoryStream();
                         await stream.CopyToAsync(ms);
                         imageBytes = ms.ToArray();
+                        
                         Debug.WriteLine($"DetectionLoop: Image captured, size: {imageBytes.Length} bytes ({imageBytes.Length / 1024} KB)");
                         StatusLabel.Text = $"Snímek pořízen ({imageBytes.Length / 1024} KB)";
                     }
@@ -120,15 +137,18 @@ public partial class MainPage : ContentPage
                 }
             });
 
+            // Pokud máme obrázek a stále detekujeme, provést YOLO detekci
             if (imageBytes != null && _isDetecting)
             {
                 Debug.WriteLine($"DetectionLoop: Calling DetectObjectsAsync with {imageBytes.Length} bytes");
                 try
                 {
+                    // Volat platform-specifickou detekci (Android YOLO)
                     var results = await DetectObjectsAsync(imageBytes, 0, 0);
 
                     Debug.WriteLine($"DetectionLoop: DetectObjectsAsync returned {results?.Count ?? 0} results");
                     
+                    // Logovat všechny nalezené objekty
                     if (results != null)
                     {
                         foreach (var result in results)
@@ -137,18 +157,27 @@ public partial class MainPage : ContentPage
                         }
                     }
 
+                    // Aktualizovat UI s výsledky detekce - musí běžet na UI vlákně
+                    // BeginInvokeOnMainThread = asynchronní volání, nekáže se na dokončení
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
+                        // Pokud byly nalezeny objekty
                         if (results != null && results.Any())
                         {
+                            // Aktualizovat status label s počtem objektů a prvním labelem
                             StatusLabel.Text = $"DETEKCE: {results.Count} objektů ({results[0].Label})";
                             Debug.WriteLine($"DetectionLoop: Updating UI with {results.Count} objects");
+                            
+                            // Vykreslit bounding boxy na overlay
                             UpdateVisualOverlay(results);
                         }
                         else
                         {
+                            // Žádné objekty nenalezeny - zobrazit "hledám" status
                             StatusLabel.Text = "YOLO: Hledám objekty...";
                             Debug.WriteLine("DetectionLoop: No objects detected, clearing overlay");
+                            
+                            // Vymazat všechny předchozí bounding boxy
                             OverlayLayout.Children.Clear();
                         }
                     });
@@ -159,12 +188,15 @@ public partial class MainPage : ContentPage
                     Debug.WriteLine($"Exception type: {ex.GetType().Name}");
                     Debug.WriteLine($"Exception message: {ex.Message}");
                     Debug.WriteLine($"Exception stack: {ex.StackTrace}");
+                    
+                    // Logovat inner exception pokud existuje
                     if (ex.InnerException != null)
                     {
                         Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
                         Debug.WriteLine($"Inner stack: {ex.InnerException.StackTrace}");
                     }
                     
+                    // Zobrazit chybu v UI
                     MainThread.BeginInvokeOnMainThread(() => 
                     {
                         StatusLabel.Text = $"CHYBA YOLO: {ex.Message}";
@@ -189,10 +221,12 @@ public partial class MainPage : ContentPage
         
         Debug.WriteLine("MainPage: OnDisappearing called");
         
+        // Zastavit detekční smyčku nastavením flagu
         _isDetecting = false;
         
         try
         {
+            // Zastavit náhled kamery na UI vlákně
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 CameraViewControl.StopCameraPreview();
@@ -213,20 +247,22 @@ public partial class MainPage : ContentPage
     {
         Debug.WriteLine($"=== UpdateVisualOverlay called with {results?.Count ?? 0} results ===");
         
+        // Vymazat všechny existující overlay prvky
         OverlayLayout.Children.Clear();
 
+        // Pokud nejsou žádné výsledky, nic nevykreslovat
         if (results == null || !results.Any())
         {
             Debug.WriteLine("UpdateVisualOverlay: No results to display");
             return;
         }
 
-        // Počkej až bude OverlayLayout připravený
+        // Zkontrolovat, že je OverlayLayout již vyrenderován a má rozměry
         if (OverlayLayout.Width <= 0 || OverlayLayout.Height <= 0)
         {
             Debug.WriteLine($"UpdateVisualOverlay: OverlayLayout není připravený: {OverlayLayout.Width}x{OverlayLayout.Height}");
             
-            // Zkus znovu po layoutu
+            // Zkusit znovu po dokončení layoutu
             Dispatcher.Dispatch(() =>
             {
                 if (OverlayLayout.Width > 0 && OverlayLayout.Height > 0)
@@ -238,23 +274,25 @@ public partial class MainPage : ContentPage
             return;
         }
 
+        // Získat aktuální rozměry displeje pro škálování
         double displayWidth = OverlayLayout.Width;
         double displayHeight = OverlayLayout.Height;
 
         Debug.WriteLine($"UpdateVisualOverlay: Display={displayWidth}x{displayHeight}, Results={results.Count}");
 
+        // Iterovat přes všechny detekované objekty
         foreach (var result in results)
         {
             Debug.WriteLine($"Object: {result.Label} ({result.Confidence:P0}) at [{result.BoundingBox.X}, {result.BoundingBox.Y}, {result.BoundingBox.Width}, {result.BoundingBox.Height}], Image={result.ImageWidth}x{result.ImageHeight}");
 
-            // POZOR: Protože jsme fotku v ML Kitu otočili o 90 stupňů (Portrait),
-            // musíme pro výpočet poměru prohodit ImageWidth a ImageHeight. 
+            // Vypočítat scale faktory pro převod souřadnic z obrázku na displej
+            // POZOR: ImageHeight/ImageWidth jsou prohozené kvůli portrait rotaci kamery
             double scaleX = displayWidth / result.ImageHeight;
             double scaleY = displayHeight / result.ImageWidth;
 
             Debug.WriteLine($"Scale: X={scaleX}, Y={scaleY}");
 
-            // Přepočet souřadnic
+            // Aplikovat škálování na bounding box souřadnice
             var scaledX = result.BoundingBox.X * scaleX;
             var scaledY = result.BoundingBox.Y * scaleY;
             var scaledWidth = result.BoundingBox.Width * scaleX;
@@ -262,6 +300,7 @@ public partial class MainPage : ContentPage
 
             Debug.WriteLine($"Scaled: [{scaledX}, {scaledY}, {scaledWidth}, {scaledHeight}]");
 
+            // Vytvořit červený border s labelem pro bounding box
             var border = new Border
             {
                 Stroke = Colors.Red,
@@ -279,10 +318,14 @@ public partial class MainPage : ContentPage
                 }
             };
 
+            // Vytvořit Rect se škálovanými souřadnicemi
             var scaledRect = new Rect(scaledX, scaledY, scaledWidth, scaledHeight);
 
+            // Nastavit pozici a velikost borderu v AbsoluteLayout
             AbsoluteLayout.SetLayoutBounds(border, scaledRect);
             AbsoluteLayout.SetLayoutFlags(border, AbsoluteLayoutFlags.None);
+            
+            // Přidat border do overlay layoutu
             OverlayLayout.Children.Add(border);
             
             Debug.WriteLine($"Added border to overlay at {scaledRect}");
