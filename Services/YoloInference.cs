@@ -38,7 +38,8 @@ public class YoloInference : IDisposable
             
             var options = new SessionOptions();
             options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
-            
+
+            // Zde naèteme model z dané cesty do InferenceSession
             _session = new InferenceSession(_modelPath, options);
             
             Debug.WriteLine("YoloInference: Model loaded successfully");

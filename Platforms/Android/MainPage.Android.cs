@@ -94,6 +94,9 @@ public partial class MainPage
             var pixels = ImagePreprocessor.PreprocessImage(bitmap);
             
             Debug.WriteLine("DetectObjectsAsync: Running YOLO detection...");
+            // Zásadní èást, kde se volá YOLO inference, pøedáme pøedzpracované pixely a rozmìry a vrátíme pole detekcí objektù
+            // pixels obsahuje normalizované hodnoty pixelù v rozsahu [0,1], obrázek je zmìnìn na ètverec s paddingem v rozlišení 640x640¡a to vždy
+            // bitmap.Width, bitmap.Height obsahují pùvodní rozmìry obrázku pøed zmìnou velikosti a to proto, aby bylo možné správnì mapovat detekce zpìt na pùvodní obrázek
             var detections = _yoloInference.Detect(pixels, bitmap.Width, bitmap.Height);
             
             Debug.WriteLine($"DetectObjectsAsync: YOLO found {detections.Count} objects");

@@ -109,8 +109,8 @@ public partial class MainPage : ContentPage
                 try
                 {
                     Debug.WriteLine("DetectionLoop: Calling CaptureImage");
-                    
-                    // Získat stream s obrázkem z CameraView
+
+                    // Získat stream (statický jpeg obrázek z kamery)
                     using var stream = await CameraViewControl.CaptureImage(CancellationToken.None);
                     if (stream != null)
                     {
@@ -144,6 +144,7 @@ public partial class MainPage : ContentPage
                 try
                 {
                     // Volat platform-specifickou detekci (Android YOLO)
+                    // result může obsahovat pole detekovaných objektů s jejich pozicemi a labely
                     var results = await DetectObjectsAsync(imageBytes, 0, 0);
 
                     Debug.WriteLine($"DetectionLoop: DetectObjectsAsync returned {results?.Count ?? 0} results");
