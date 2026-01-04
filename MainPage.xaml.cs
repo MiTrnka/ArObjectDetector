@@ -77,6 +77,7 @@ public partial class MainPage : ContentPage
     /// <summary>
     /// Kontinuální detekční smyčka běžící na pozadí.
     /// Každých 800ms zachytí frame z kamery, provede detekci a aktualizuje UI.
+    /// Overlay se vždy vymaže a překreslí podle aktuálních výsledků.
     /// </summary>
     private async Task DetectionLoop()
     {
@@ -144,7 +145,6 @@ public partial class MainPage : ContentPage
                 try
                 {
                     // Volat platform-specifickou detekci (Android YOLO)
-                    // result může obsahovat pole detekovaných objektů s jejich pozicemi a labely
                     var results = await DetectObjectsAsync(imageBytes, 0, 0);
 
                     Debug.WriteLine($"DetectionLoop: DetectObjectsAsync returned {results?.Count ?? 0} results");
@@ -159,10 +159,13 @@ public partial class MainPage : ContentPage
                     }
 
                     // Aktualizovat UI s výsledky detekce - musí běžet na UI vlákně
-                    // BeginInvokeOnMainThread = asynchronní volání, nekáže se na dokončení
+                    // Overlay se vždy vymaže a překreslí podle aktuálního stavu
                     MainThread.BeginInvokeOnMainThread(() =>
                     {
-                        // Pokud byly nalezeny objekty
+                        // Vždy vymazat starý overlay
+                        OverlayLayout.Children.Clear();
+                        
+                        // Pokud byly nalezeny objekty, vykreslit je
                         if (results != null && results.Any())
                         {
                             // Aktualizovat status label s počtem objektů a prvním labelem
@@ -174,12 +177,9 @@ public partial class MainPage : ContentPage
                         }
                         else
                         {
-                            // Žádné objekty nenalezeny - zobrazit "hledám" status
+                            // Žádné objekty nenalezeny - overlay je již vymazaný
                             StatusLabel.Text = "YOLO: Hledám objekty...";
-                            Debug.WriteLine("DetectionLoop: No objects detected, clearing overlay");
-                            
-                            // Vymazat všechny předchozí bounding boxy
-                            OverlayLayout.Children.Clear();
+                            Debug.WriteLine("DetectionLoop: No objects detected, overlay cleared");
                         }
                     });
                 }
@@ -197,10 +197,11 @@ public partial class MainPage : ContentPage
                         Debug.WriteLine($"Inner stack: {ex.InnerException.StackTrace}");
                     }
                     
-                    // Zobrazit chybu v UI
+                    // Zobrazit chybu v UI a vymazat overlay
                     MainThread.BeginInvokeOnMainThread(() => 
                     {
                         StatusLabel.Text = $"CHYBA YOLO: {ex.Message}";
+                        OverlayLayout.Children.Clear();
                     });
                 }
             }
@@ -241,16 +242,14 @@ public partial class MainPage : ContentPage
     }
 
     /// <summary>
-    /// Aktualizuje vizuální overlay s bounding boxy pro detekované objekty.
+    /// Aktualizuje vizuální overlay (plocha, kam se vypisují informace o detekovaných objektech) s bounding boxy pro detekované objekty.
     /// Škáluje souřadnice z obrázku na velikost displeje a vykresluje červené rámečky.
+    /// Předpokládá, že overlay byl již vymazán volajícím kódem.
     /// </summary>
     private void UpdateVisualOverlay(List<DetectedObjectResult> results)
     {
         Debug.WriteLine($"=== UpdateVisualOverlay called with {results?.Count ?? 0} results ===");
         
-        // Vymazat všechny existující overlay prvky
-        OverlayLayout.Children.Clear();
-
         // Pokud nejsou žádné výsledky, nic nevykreslovat
         if (results == null || !results.Any())
         {
