@@ -16,14 +16,38 @@ public partial class MainPage : ContentPage
 
     private async void OnStartCameraClicked(object sender, EventArgs e)
     {
-        var status = await Permissions.RequestAsync<Permissions.Camera>();
-
-        if (status == PermissionStatus.Granted)
+        try
         {
+            // Zkontrolovat aktuální stav oprávnění
+            var currentStatus = await Permissions.CheckStatusAsync<Permissions.Camera>();
+            
+            if (currentStatus != PermissionStatus.Granted)
+            {
+                // Požádat o oprávnění
+                var status = await Permissions.RequestAsync<Permissions.Camera>();
+                
+                if (status != PermissionStatus.Granted)
+                {
+                    StatusLabel.Text = "Kamera nemá oprávnění!";
+                    await DisplayAlert("Oprávnění", "Aplikace potřebuje přístup ke kameře", "OK");
+                    return;
+                }
+            }
+
             StatusLabel.Text = "Kamera startuje...";
+            
+            // Spustit kameru
             await CameraViewControl.StartCameraPreview(CancellationToken.None);
+            
             _isDetecting = true;
+            StatusLabel.Text = "Kamera běží";
+            
             _ = Task.Run(DetectionLoop);
+        }
+        catch (Exception ex)
+        {
+            StatusLabel.Text = $"Chyba: {ex.Message}";
+            Debug.WriteLine($"Camera error: {ex}");
         }
     }
 
@@ -32,6 +56,9 @@ public partial class MainPage : ContentPage
         while (_isDetecting)
         {
             await Task.Delay(800);
+            
+            if (!_isDetecting) break;
+            
             byte[]? imageBytes = null;
 
             await MainThread.InvokeOnMainThreadAsync(async () =>
@@ -47,10 +74,14 @@ public partial class MainPage : ContentPage
                         StatusLabel.Text = $"Snímek pořízen ({imageBytes.Length / 1024} KB)";
                     }
                 }
-                catch (Exception ex) { StatusLabel.Text = $"Chyba snímání: {ex.Message}"; }
+                catch (Exception ex) 
+                { 
+                    StatusLabel.Text = $"Chyba snímání: {ex.Message}"; 
+                    Debug.WriteLine($"Capture error: {ex}");
+                }
             });
 
-            if (imageBytes != null)
+            if (imageBytes != null && _isDetecting)
             {
                 try
                 {
@@ -72,9 +103,33 @@ public partial class MainPage : ContentPage
                 }
                 catch (Exception ex)
                 {
-                    MainThread.BeginInvokeOnMainThread(() => StatusLabel.Text = $"CHYBA ML Kit: {ex.Message}");
+                    MainThread.BeginInvokeOnMainThread(() => 
+                    {
+                        StatusLabel.Text = $"CHYBA ML Kit: {ex.Message}";
+                        Debug.WriteLine($"Detection error: {ex}");
+                    });
                 }
             }
+        }
+    }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        
+        // Zastavit detekci a kameru při opuštění stránky
+        _isDetecting = false;
+        
+        try
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                CameraViewControl.StopCameraPreview();
+            });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error stopping camera: {ex}");
         }
     }
 

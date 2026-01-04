@@ -19,17 +19,8 @@ public partial class MainPage
         // Inicializace detektoru s korektním nastavením
         if (_detector == null)
         {
-            // Vytvoření builderu explicitně z namespace Defaults
-            var builder = new ObjectDetectorOptions.Builder();
-
-            // Metody voláme samostatně, protože v C# bindingu vrací typ Java.Lang.Object
-            // a řetězení (Fluent API) by způsobilo chybu kompilace
-            builder.SetDetectorMode(ObjectDetectorOptions.StreamMode);
-            builder.EnableMultipleObjects();
-            builder.EnableClassification();
-
-            // Sestavení konfigurace a získání klienta
-            var options = (ObjectDetectorOptions)builder.Build();
+            // Použijeme výchozí ObjectDetectorOptions - bez speciálních nastavení
+            var options = new ObjectDetectorOptions.Builder().Build();
             _detector = ObjectDetection.GetClient(options);
         }
 
