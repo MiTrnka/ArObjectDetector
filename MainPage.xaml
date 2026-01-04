@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             x:Class="ArObjectDetector.MainPage">
+
+    <Grid>
+        <toolkit:CameraView x:Name="CameraViewControl"
+                            HorizontalOptions="Fill"
+                            VerticalOptions="Fill" />
+
+        <AbsoluteLayout x:Name="OverlayLayout"
+                        HorizontalOptions="Fill"
+                        VerticalOptions="Fill"
+                        InputTransparent="True"
+                        CascadeInputTransparent="True" />
+
+        <Label x:Name="StatusLabel" 
+               Text="Připraveno" 
+               TextColor="Yellow" 
+               BackgroundColor="#A0000000"
+               VerticalOptions="Start" 
+               HorizontalOptions="Center" 
+               Margin="0,50,0,0"
+               Padding="10"
+               FontSize="16" />
+
+        <Button Text="Start Kamery"
+                VerticalOptions="End"
+                HorizontalOptions="Center"
+                Margin="20"
+                Clicked="OnStartCameraClicked" />
+    </Grid>
+</ContentPage>
