@@ -1,66 +1,137 @@
-Ôªøusing Android.Gms.Extensions;
 using Android.Graphics;
-using Android.Runtime;
-using Microsoft.Maui.Graphics;
-using Xamarin.Google.MLKit.Vision.Common;
-using Xamarin.Google.MLKit.Vision.Objects;
-// D≈Øle≈æit√Ω namespace pro standardn√≠ ObjectDetectorOptions
-using Xamarin.Google.MLKit.Vision.Objects.Defaults;
+using System.Diagnostics;
+using ArObjectDetector.Services;
 
 namespace ArObjectDetector;
 
+/// <summary>
+/// Platform-specifick· implementace objektovÈ detekce pro Android.
+/// VyuûÌv· YOLO v8 model s ONNX Runtime pro offline detekci objekt˘.
+/// </summary>
 public partial class MainPage
 {
-    private IObjectDetector? _detector;
+    private YoloInference? _yoloInference;
 
-    // Metoda pro detekci objekt≈Ø vyu≈æ√≠vaj√≠c√≠ ML Kit na platformƒõ Android
+    /// <summary>
+    /// Inicializuje YOLO model z Android assets.
+    /// Model je zkopÌrov·n do cache pro p¯Ìstup z ONNX Runtime.
+    /// </summary>
+    private void InitializeYolo()
+    {
+        try
+        {
+            Debug.WriteLine("=== Initializing YOLO ===");
+            
+            using var assetManager = Android.App.Application.Context.Assets;
+            using var assetFileDescriptor = assetManager?.OpenFd("yolov8n.onnx");
+            
+            if (assetFileDescriptor == null)
+            {
+                Debug.WriteLine("!!! YOLO model not found in assets !!!");
+                return;
+            }
+
+            var cachePath = System.IO.Path.Combine(Android.App.Application.Context.CacheDir!.AbsolutePath, "yolov8n.onnx");
+            
+            if (!File.Exists(cachePath))
+            {
+                Debug.WriteLine($"Copying YOLO model to cache: {cachePath}");
+                using var inputStream = assetManager?.Open("yolov8n.onnx");
+                using var outputStream = File.Create(cachePath);
+                inputStream?.CopyTo(outputStream);
+                Debug.WriteLine("YOLO model copied successfully");
+            }
+
+            _yoloInference = new YoloInference(cachePath);
+            _yoloInference.Initialize();
+            
+            Debug.WriteLine("=== YOLO Initialized Successfully ===");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"!!! YOLO Initialization FAILED !!!");
+            Debug.WriteLine($"Error: {ex.Message}");
+            Debug.WriteLine($"Stack: {ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Provede detekci objekt˘ v obr·zku pomocÌ YOLO modelu.
+    /// Tato partial metoda je specifick· pro Android platformu.
+    /// </summary>
+    /// <param name="imageBytes">Obr·zek jako byte pole (JPEG/PNG)</param>
+    /// <param name="width">äÌ¯ka p˘vodnÌho obr·zku</param>
+    /// <param name="height">V˝öka p˘vodnÌho obr·zku</param>
+    /// <returns>Seznam detekovan˝ch objekt˘ s pozicemi a labely</returns>
     public partial async Task<List<DetectedObjectResult>> DetectObjectsAsync(byte[] imageBytes, int width, int height)
     {
-        // Inicializace detektoru s korektn√≠m nastaven√≠m
-        if (_detector == null)
+        Debug.WriteLine($"=== DetectObjectsAsync (YOLO) called with {imageBytes?.Length ?? 0} bytes ===");
+        
+        try
         {
-            // Pou≈æijeme v√Ωchoz√≠ ObjectDetectorOptions - bez speci√°ln√≠ch nastaven√≠
-            var options = new ObjectDetectorOptions.Builder().Build();
-            _detector = ObjectDetection.GetClient(options);
-        }
-
-        // P≈ôevod byt≈Ø na Bitmapu
-        using var bitmap = await BitmapFactory.DecodeByteArrayAsync(imageBytes, 0, imageBytes.Length);
-        if (bitmap == null) return new List<DetectedObjectResult>();
-
-        // P≈ô√≠prava InputImage (ML Kit vy≈æaduje otoƒçen√≠ pro Portrait orientaci)
-        var image = InputImage.FromBitmap(bitmap, 90);
-
-        // Zpracov√°n√≠ obrazu
-        var resultsObj = await _detector.Process(image);
-        var output = new List<DetectedObjectResult>();
-
-        if (resultsObj != null)
-        {
-            // P≈ôevod Java seznamu v√Ωsledk≈Ø na C# kolekci pomoc√≠ JavaCast
-            var javaList = resultsObj.JavaCast<Java.Util.IList>();
-            int size = javaList.Size();
-
-            for (int i = 0; i < size; i++)
+            if (_yoloInference == null)
             {
-                var item = javaList.Get(i);
-                var obj = item.JavaCast<Xamarin.Google.MLKit.Vision.Objects.DetectedObject>();
-
-                // Z√≠sk√°n√≠ prvn√≠ho nalezen√©ho ≈°t√≠tku (nap≈ô. "Fashon good", "Food" atd.)
-                var firstLabel = obj.Labels.FirstOrDefault();
-
-                output.Add(new DetectedObjectResult
+                InitializeYolo();
+                
+                if (_yoloInference == null)
                 {
-                    Label = firstLabel?.Text ?? "Objekt",
-                    Confidence = firstLabel?.Confidence ?? 0,
+                    Debug.WriteLine("!!! YOLO not initialized, returning empty !!!");
+                    return new List<DetectedObjectResult>();
+                }
+            }
+
+            Debug.WriteLine("DetectObjectsAsync: Decoding bitmap...");
+            using var bitmap = await BitmapFactory.DecodeByteArrayAsync(imageBytes, 0, imageBytes.Length);
+            if (bitmap == null)
+            {
+                Debug.WriteLine("!!! Bitmap is NULL !!!");
+                return new List<DetectedObjectResult>();
+            }
+
+            Debug.WriteLine($"DetectObjectsAsync: Bitmap decoded: {bitmap.Width}x{bitmap.Height}");
+
+            Debug.WriteLine("DetectObjectsAsync: Preprocessing image...");
+            var pixels = ImagePreprocessor.PreprocessImage(bitmap);
+            
+            Debug.WriteLine("DetectObjectsAsync: Running YOLO detection...");
+            var detections = _yoloInference.Detect(pixels, bitmap.Width, bitmap.Height);
+            
+            Debug.WriteLine($"DetectObjectsAsync: YOLO found {detections.Count} objects");
+
+            var results = new List<DetectedObjectResult>();
+            foreach (var detection in detections)
+            {
+                Debug.WriteLine($"  - {detection.Label} ({detection.Confidence:F2}) at [{detection.X:F0}, {detection.Y:F0}, {detection.Width:F0}x{detection.Height:F0}]");
+                
+                results.Add(new DetectedObjectResult
+                {
+                    Label = detection.Label,
+                    Confidence = detection.Confidence,
                     BoundingBox = new Microsoft.Maui.Graphics.Rect(
-                        obj.BoundingBox.Left, obj.BoundingBox.Top,
-                        obj.BoundingBox.Width(), obj.BoundingBox.Height()),
+                        detection.X, 
+                        detection.Y, 
+                        detection.Width, 
+                        detection.Height),
                     ImageWidth = bitmap.Width,
                     ImageHeight = bitmap.Height
                 });
             }
+            
+            Debug.WriteLine($"DetectObjectsAsync: Returning {results.Count} results");
+            return results;
         }
-        return output;
+        catch (Exception ex)
+        {
+            Debug.WriteLine("!!! DetectObjectsAsync EXCEPTION !!!");
+            Debug.WriteLine($"Type: {ex.GetType().Name}");
+            Debug.WriteLine($"Message: {ex.Message}");
+            Debug.WriteLine($"Stack: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Debug.WriteLine($"Inner: {ex.InnerException.Message}");
+            }
+            
+            return new List<DetectedObjectResult>();
+        }
     }
 }

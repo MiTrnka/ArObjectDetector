@@ -1,6 +1,6 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AndroidStoreUncompressedFileExtensions>.tflite</AndroidStoreUncompressedFileExtensions>
+    <AndroidStoreUncompressedFileExtensions>.tflite;.onnx</AndroidStoreUncompressedFileExtensions>
     <TargetFramework>net10.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>ArObjectDetector</RootNamespace>
@@ -13,8 +13,6 @@
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
     <SupportedOSPlatformVersion>23.0</SupportedOSPlatformVersion>
-
-    <AndroidStoreUncompressedFileExtensions>.tflite</AndroidStoreUncompressedFileExtensions>
   </PropertyGroup>
 
   <ItemGroup>
@@ -28,10 +26,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AndroidAsset Remove="Platforms\Android\Assets\README_YOLO.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AndroidAsset Include="Platforms\Android\Assets\yolov8n.onnx" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Maui" Version="13.0.0" />
     <PackageReference Include="CommunityToolkit.Maui.Camera" Version="5.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.20" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.1" />
-    <PackageReference Include="Xamarin.Google.MLKit.ObjectDetection" Version="117.0.2.5" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
   </ItemGroup>
 </Project>
